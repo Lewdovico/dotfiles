@@ -3,7 +3,7 @@ name: Update Flakes
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 17 * * 0" # At 17:00 UTC / 2 Midnight JP on Sunday
+    - cron: "0 17 * * 0" # At 17:00 UTC / Midnight JP on Sunday
 
 jobs:
   update-flake-lock:
@@ -11,18 +11,43 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4.1.3
+
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Enable Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
       - name: Update flake.lock
-        uses: DeterminateSystems/update-flake-lock@main
-        with:
-          git-author-name: "Ludovico Piero"
-          git-author-email: "lewdovico@gnuweeb.org"
-          git-committer-name: "Ludovico Piero"
-          git-committer-email: "lewdovico@gnuweeb.org"
-          token: ${{ secrets.GH_TOKEN }}
-          commit-msg: "chore: Update flake.lock" # The message provided with the commit
-          pr-title: "Update flake.lock" # Title of PR to be created
-          pr-labels: | # Labels to be set on the PR
-            automated
-            keep-up-to-date
+        run: |
+          git config --local user.email "lewdovico@gnuweeb.org"
+          git config --local user.name "Ludovico Piero"
+
+          # Create a new branch for the update
+          git checkout -b update-flake-lock
+
+          # Update flake.lock and commit changes
+          nix flake update --commit-lock-file
+
+          # Push the new branch
+          git push origin update-flake-lock
+
+          # Capture the commit message
+          COMMIT_MESSAGE="$(git log -1 --format=%B)"
+          echo "GIT_COMMIT_MESSAGE=$COMMIT_MESSAGE" >> $GITHUB_ENV
+
+          echo "GIT_COMMIT_MESSAGE is: ${COMMIT_MESSAGE}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Authenticate GitHub CLI
+        run: |
+          echo $GH_TOKEN | gh auth login --with-token
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Pull Request
+        run: |
+          gh pr create --title "chore: Update flake.lock" --body "${GIT_COMMIT_MESSAGE}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
